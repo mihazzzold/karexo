@@ -11,7 +11,7 @@
 # Подробная инструкция — docs/установка.md
 services:
   karexo:
-    image: ghcr.io/mihazzzold/karexo-core:latest
+    image: ghcr.io/mihazzzold/karexo:latest
     container_name: karexo
     restart: unless-stopped
 

@@ -1,0 +1,75 @@
+name: 💡 Предложить улучшение
+description: Не хватает возможности или что-то неудобно
+title: "[Идея]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Расскажите, что вы пытаетесь сделать и что мешает. Задача важнее готового решения -
+        зная её, часто находится более простой путь.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Я поискал похожее предложение среди уже созданных задач
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу вы решаете
+      description: Что происходит сейчас и почему это неудобно.
+      placeholder: |
+        Веду проекты в базе данных. Чтобы посмотреть загрузку по неделям,
+        приходится выгружать всё в таблицу и считать вручную.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагаете
+      description: Как, по-вашему, это должно работать в интерфейсе.
+      placeholder: Показывать сумму по колонке под таблицей, с выбором функции - сумма, среднее, количество.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Как обходитесь сейчас
+      description: Если есть временное решение - опишите его.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия karexo
+      description: "Настройки → О программе. Если ещё не устанавливали - оставьте поле пустым."
+      placeholder: "например, v0.1.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Способ установки
+      options:
+        - Docker Compose
+        - Docker (docker run)
+        - Другой способ
+        - Ещё не устанавливал
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Примеры и скриншоты
+      description: Наброски, скриншоты, примеры из других программ - всё, что поясняет идею.
+    validations:
+      required: false

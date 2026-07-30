@@ -1,0 +1,55 @@
+# karexo — самостоятельный хостинг.
+#
+# Один контейнер: сервер отдаёт и само приложение, и API.
+# Все данные (заметки, пользователи, вложения) лежат в томе karexo-data.
+#
+# Запуск:
+#   1) положите рядом файл .env (образец — .env.example)
+#   2) docker compose up -d
+#   3) откройте http://<адрес-сервера>:8080
+#
+# Подробная инструкция — docs/установка.md
+services:
+  karexo:
+    image: ghcr.io/mihazzzold/karexo-core:latest
+    container_name: karexo
+    restart: unless-stopped
+
+    # Слева — порт на вашем сервере (меняется в .env), справа — порт внутри
+    # контейнера: он всегда 8080, трогать его не нужно.
+    # За обратным прокси (nginx/Caddy) допишите слева 127.0.0.1:
+    #   - "127.0.0.1:${KAREXO_PORT:-8080}:8080"
+    ports:
+      - "${KAREXO_PORT:-8080}:8080"
+
+    # Том с данными: файл базы karexo.db (внутри неё и заметки, и вложения).
+    # Это единственное, что нужно резервно копировать.
+    volumes:
+      - karexo-data:/data
+
+    # Значения берутся из файла .env рядом с этим compose-файлом.
+    # Пусто = поведение по умолчанию (без почты).
+    environment:
+      # почта: пустой HOST — письма не отправляются, коды видны в логе контейнера
+      KAREXO_SMTP_HOST: ${KAREXO_SMTP_HOST:-}
+      KAREXO_SMTP_PORT: ${KAREXO_SMTP_PORT:-}
+      KAREXO_SMTP_USER: ${KAREXO_SMTP_USER:-}
+      KAREXO_SMTP_PASS: ${KAREXO_SMTP_PASS:-}
+      KAREXO_SMTP_FROM: ${KAREXO_SMTP_FROM:-}
+      # публичный адрес инстанса — подставляется в ссылку письма-приглашения
+      KAREXO_BASE_URL: ${KAREXO_BASE_URL:-}
+
+    # Проверка живости: сервер отвечает на /healthz.
+    # Состояние видно в выводе `docker compose ps`.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  karexo-data:
+    # имя тома закреплено, чтобы команды резервного копирования
+    # из инструкции работали без изменений
+    name: karexo-data

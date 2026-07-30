@@ -1,0 +1,96 @@
+name: 🐞 Сообщить об ошибке
+description: Что-то работает не так, как ожидалось
+title: "[Ошибка]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что нашли время написать. Чем точнее шаги, тем быстрее удастся починить.
+
+        ⚠️ **Не вставляйте сюда пароли, токены, коды из писем и личные данные** -
+        задача видна всем. Из логов такие строки уберите.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Я поискал похожую задачу среди уже созданных
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия karexo
+      description: "Настройки → О программе. Либо ответ сервера на `/healthz` - там есть поле version."
+      placeholder: "например, v0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Способ установки
+      options:
+        - Docker Compose
+        - Docker (docker run)
+        - Другой способ (опишите ниже)
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Браузер и операционная система
+      placeholder: "например, Chrome 140 на Windows 11 / Safari на iPhone"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      description: По пунктам, от начала - чтобы можно было повторить у себя.
+      placeholder: |
+        1. Открыть страницу «Проекты»
+        2. Добавить блок «Таблица»
+        3. Нажать Ctrl+Z
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+      placeholder: Таблица возвращается в прежний вид.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение
+      description: Что произошло вместо этого. Если есть текст ошибки на экране - приведите его.
+      placeholder: Таблица исчезает целиком, страница остаётся пустой.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Скриншоты и логи
+      description: |
+        Скриншот или короткая запись экрана очень помогают.
+        Логи сервера: `docker compose logs --tail=200`.
+        Ошибки в браузере: консоль разработчика (F12 → Console).
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Дополнительно
+      description: Повторяется ли ошибка каждый раз, было ли раньше, что-то ещё важное.
+    validations:
+      required: false

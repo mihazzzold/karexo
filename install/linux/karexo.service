@@ -1,0 +1,58 @@
+[Unit]
+Description=karexo - база знаний на своём сервере
+Documentation=https://github.com/mihazzzold/karexo
+# После сети: karexo слушает порт, а не ждёт его появления.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=karexo
+Group=karexo
+
+# Настройки лежат отдельным файлом, а не здесь: править окружение службы
+# безопаснее, чем сам юнит, и обновление karexo его не затрагивает.
+# `-` перед путём - «нет файла, и ладно»: инстанс поднимется на умолчаниях.
+EnvironmentFile=-/etc/karexo/karexo.env
+
+ExecStart=/usr/local/bin/karexo-server
+Restart=on-failure
+RestartSec=5s
+
+# Всё состояние - в одном каталоге: база и вложения. Его и надо копировать.
+Environment=KAREXO_DATA=/var/lib/karexo
+WorkingDirectory=/var/lib/karexo
+
+# Ограничения прав.
+#
+# karexo принимает файлы от людей и ходит в сеть по адресам, которые задал
+# владелец аккаунта. Если однажды в нём найдут дыру, она упрётся в эти строки:
+# службе незачем писать куда-либо кроме своего каталога данных, незачем видеть
+# чужие домашние папки и незачем получать новые привилегии.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# Единственный каталог, куда службе можно писать.
+ReadWritePaths=/var/lib/karexo
+# Только обычные сетевые семейства: сырые сокеты и экзотика службе не нужны.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Порт ниже 1024 требует привилегии. По умолчанию karexo слушает 8080 и
+# строка не нужна; раскомментируйте, если ставите KAREXO_ADDR=:443 без прокси.
+#AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Журнал уходит в journalctl: `journalctl -u karexo -f`
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

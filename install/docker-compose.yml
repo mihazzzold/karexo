@@ -1,55 +1,186 @@
-# karexo - самостоятельный хостинг.
+# karexo - установка на свой сервер.
 #
-# Один контейнер: сервер отдаёт и само приложение, и API.
-# Все данные (заметки, пользователи, вложения) лежат в томе karexo-data.
+# Этот файл САМОДОСТАТОЧЕН: исходники не нужны, образ берётся готовым из
+# реестра. Секции `build` здесь нет намеренно - собирать нечего и нечем.
 #
 # Запуск:
-#   1) положите рядом файл .env (образец - .env.example)
-#   2) docker compose up -d
-#   3) откройте http://<адрес-сервера>:8080
+#   1. cp .env.example .env  и заполнить (там три обязательные строки)
+#   2. docker compose up -d
+#   3. открыть адрес из KAREXO_BASE_URL - первый зарегистрированный аккаунт
+#      становится владельцем инстанса
 #
-# Подробная инструкция - docs/установка.md
+# Обновление:
+#   docker compose pull && docker compose up -d
+#
+# Полный список настроек - в .env.example рядом. Здесь перечислено только то,
+# что действительно меняют; всё остальное имеет разумные умолчания.
+#
+# ВАЖНО про переменные: compose передаёт в контейнер ТОЛЬКО то, что перечислено
+# в блоке environment. Добавили строку в .env - добавьте и сюда, иначе значение
+# до сервера не доедет и инстанс молча поднимется с умолчанием.
+
 services:
   karexo:
-    # Версия образа задаётся в .env (KAREXO_VERSION). По умолчанию - точный
-    # номер: он не меняется сам, и вы всегда знаете, что у вас работает.
-    #
-    # Тег :latest появится с первым окончательным выпуском. Сейчас последняя
-    # версия предварительная (beta), а таким latest не выдаётся намеренно -
-    # иначе бета уезжала бы всем, кто просто выполнил `docker compose pull`.
-    image: ghcr.io/mihazzzold/karexo:${KAREXO_VERSION:-v0.2.0-beta.1}
+    # Версия задаётся точным номером, а не тегом latest, и это осознанно: пока
+    # последний выпуск предварительный (beta), latest не выдаётся вовсе - иначе
+    # бета уезжала бы всем, кто просто выполнил `docker compose pull`.
+    # Появится окончательная версия - здесь можно будет писать latest.
+    image: ghcr.io/mihazzzold/karexo:${KAREXO_TAG:-v0.2.0-beta.1}
     container_name: karexo
     restart: unless-stopped
 
-    # Слева - порт на вашем сервере (меняется в .env), справа - порт внутри
-    # контейнера: он всегда 8080, трогать его не нужно.
-    # За обратным прокси (nginx/Caddy) допишите слева 127.0.0.1 - и укажите
-    # тот же KAREXO_PORT в конфиге прокси:
-    #   - "127.0.0.1:${KAREXO_PORT:-8080}:8080"
     ports:
+      # Слева - порт на вашей машине. Меняется в .env через KAREXO_PORT.
+      # Если перед karexo стоит nginx/traefik, оставьте 127.0.0.1:8080:8080,
+      # чтобы наружу торчал только прокси.
       - "${KAREXO_PORT:-8080}:8080"
 
-    # Том с данными: файл базы karexo.db (внутри неё и заметки, и вложения).
-    # Это единственное, что нужно резервно копировать.
     volumes:
+      # Одна папка на всё состояние: база (karexo.db) и файлы вложений (blobs/).
+      # Именно её и надо забирать в резервную копию.
       - karexo-data:/data
 
-    # Значения берутся из файла .env рядом с этим compose-файлом.
-    # Пусто = поведение по умолчанию (без почты).
     environment:
-      # почта: пустой HOST - письма не отправляются, коды видны в логе контейнера
+      # ── Обязательное ───────────────────────────────────────────────────────
+      # Внешний адрес инстанса. Уходит в письма и в публичные ссылки: без него
+      # приглашение приведёт человека не туда.
+      KAREXO_BASE_URL: ${KAREXO_BASE_URL:?укажите KAREXO_BASE_URL в .env}
+      # Ключ шифрования токенов интеграций. Сгенерировать один раз:
+      #   openssl rand -hex 32
+      # Потеряете - придётся заново подключать все интеграции.
+      KAREXO_TOKEN_KEY: ${KAREXO_TOKEN_KEY:?сгенерируйте KAREXO_TOKEN_KEY, см. .env.example}
+
+      # ── Редакция и доступ ──────────────────────────────────────────────────
+      KAREXO_EDITION: ${KAREXO_EDITION:-self-hosted}
+      # open - регистрируется кто угодно; invite - только по приглашению;
+      # closed - аккаунты заводит администратор
+      KAREXO_REGISTRATION: ${KAREXO_REGISTRATION:-invite}
+
+      # ── Почта ──────────────────────────────────────────────────────────────
+      # Без SMTP коды входа и приглашения НЕ уходят. Инстанс поднимется, но
+      # пригласить человека будет нечем.
       KAREXO_SMTP_HOST: ${KAREXO_SMTP_HOST:-}
       KAREXO_SMTP_PORT: ${KAREXO_SMTP_PORT:-}
       KAREXO_SMTP_USER: ${KAREXO_SMTP_USER:-}
       KAREXO_SMTP_PASS: ${KAREXO_SMTP_PASS:-}
       KAREXO_SMTP_FROM: ${KAREXO_SMTP_FROM:-}
-      # публичный адрес инстанса - из него собираются ссылки в письмах
-      # (приглашение в документ, отписка от дайджеста)
-      KAREXO_BASE_URL: ${KAREXO_BASE_URL:-}
 
-    # Проверка живости: сервер отвечает на /healthz.
-    # Состояние видно в выводе `docker compose ps`.
+      # ── HTTPS силами самого сервера ────────────────────────────────────────
+      # off (по умолчанию) - обычный HTTP, шифрование даёт прокси перед нами.
+      # auto - сертификат берётся у Let's Encrypt сам; нужен публичный домен и
+      #        порты 80 и 443 наружу. В закрытом контуре недоступен: это
+      #        обращение к чужому серверу, и инстанс откажется стартовать.
+      # file - свой сертификат (свой центр сертификации, wildcard). Наружу не
+      #        ходим - этим живёт enterprise.
+      KAREXO_TLS: ${KAREXO_TLS:-}
+      KAREXO_TLS_DOMAIN: ${KAREXO_TLS_DOMAIN:-}
+      KAREXO_TLS_EMAIL: ${KAREXO_TLS_EMAIL:-}
+      KAREXO_TLS_CERT: ${KAREXO_TLS_CERT:-}
+      KAREXO_TLS_KEY: ${KAREXO_TLS_KEY:-}
+      # Куда autocert складывает выданные сертификаты. Каталог обязан пережить
+      # перезапуск, иначе karexo просит новый при каждом старте и упирается в
+      # недельный предел Let's Encrypt. Пусто = <данные>/certs, то есть в томе.
+      KAREXO_TLS_CACHE: ${KAREXO_TLS_CACHE:-}
+      # Порт HTTPS внутри контейнера и адрес своего ACME-сервера.
+      KAREXO_TLS_ADDR: ${KAREXO_TLS_ADDR:-}
+      KAREXO_TLS_DIRECTORY: ${KAREXO_TLS_DIRECTORY:-}
+
+      # ── За обратным прокси ─────────────────────────────────────────────────
+      # true - когда TLS терминирует nginx/traefik перед нами. Тогда сессионная
+      # кука получает флаг Secure по заголовку X-Forwarded-Proto.
+      # НЕ включайте, если сервер смотрит в интернет напрямую: заголовок тогда
+      # напишет кто угодно.
+      KAREXO_TRUST_PROXY: ${KAREXO_TRUST_PROXY:-}
+
+      # ── Место ──────────────────────────────────────────────────────────────
+      # Потолок на весь инстанс и месячный предел раздачи по публичным ссылкам.
+      # Пусто = без ограничения.
+      KAREXO_INSTANCE_LIMIT: ${KAREXO_INSTANCE_LIMIT:-}
+      KAREXO_EGRESS_MONTHLY_BYTES: ${KAREXO_EGRESS_MONTHLY_BYTES:-}
+
+      # ── Резервные копии по расписанию ──────────────────────────────────────
+      # Выключены, пока не заданы обе строки: инстанс не начинает молча писать
+      # гигабайты на чужой диск. KAREXO_BACKUP_DIR должен лежать внутри тома.
+      KAREXO_BACKUP_DIR: ${KAREXO_BACKUP_DIR:-}
+      KAREXO_BACKUP_EVERY: ${KAREXO_BACKUP_EVERY:-}
+      KAREXO_BACKUP_KEEP: ${KAREXO_BACKUP_KEEP:-}
+
+      # ── Интеграции ─────────────────────────────────────────────────────────
+      # Пусто = раздел «Интеграции» показывает провайдеров выключенными.
+      # Ключи заводятся в самом провайдере на ваш домен.
+      KAREXO_FEATURES_INTEGRATIONS: ${KAREXO_FEATURES_INTEGRATIONS:-}
+      KAREXO_GITHUB_CLIENT_ID: ${KAREXO_GITHUB_CLIENT_ID:-}
+      KAREXO_GITHUB_CLIENT_SECRET: ${KAREXO_GITHUB_CLIENT_SECRET:-}
+      KAREXO_GOOGLE_CLIENT_ID: ${KAREXO_GOOGLE_CLIENT_ID:-}
+      KAREXO_GOOGLE_CLIENT_SECRET: ${KAREXO_GOOGLE_CLIENT_SECRET:-}
+
+      # ── Тонкая настройка ───────────────────────────────────────────────────
+      # Всё ниже имеет разумные умолчания и обычно не трогается. Строки стоят
+      # здесь, чтобы настройку МОЖНО было задать через .env: compose передаёт в
+      # контейнер только перечисленное, и без строки значение просто не доедет.
+      #
+      # Потолки частоты (защита от перебора и от скриптов):
+      KAREXO_LOGIN_MAX_ATTEMPTS: ${KAREXO_LOGIN_MAX_ATTEMPTS:-}
+      KAREXO_LOGIN_WINDOW_SEC: ${KAREXO_LOGIN_WINDOW_SEC:-}
+      KAREXO_SIGNUP_MAX: ${KAREXO_SIGNUP_MAX:-}
+      KAREXO_SIGNUP_WINDOW_SEC: ${KAREXO_SIGNUP_WINDOW_SEC:-}
+      KAREXO_TOTP_MAX_ATTEMPTS: ${KAREXO_TOTP_MAX_ATTEMPTS:-}
+      KAREXO_TOTP_WINDOW_SEC: ${KAREXO_TOTP_WINDOW_SEC:-}
+      KAREXO_GUEST_NOTIFY_MAX: ${KAREXO_GUEST_NOTIFY_MAX:-}
+      KAREXO_GUEST_NOTIFY_WINDOW_SEC: ${KAREXO_GUEST_NOTIFY_WINDOW_SEC:-}
+      KAREXO_SCOPE_MAX: ${KAREXO_SCOPE_MAX:-}
+      KAREXO_SCOPE_WINDOW_SEC: ${KAREXO_SCOPE_WINDOW_SEC:-}
+      KAREXO_INTEGRATION_VERIFY_MAX: ${KAREXO_INTEGRATION_VERIFY_MAX:-}
+      KAREXO_INTEGRATION_VERIFY_WINDOW_SEC: ${KAREXO_INTEGRATION_VERIFY_WINDOW_SEC:-}
+      KAREXO_CALENDAR_READ_MAX: ${KAREXO_CALENDAR_READ_MAX:-}
+      KAREXO_CALENDAR_READ_WINDOW_SEC: ${KAREXO_CALENDAR_READ_WINDOW_SEC:-}
+      # AI-прокси: сервер пересылает запрос к модели (провайдеры без CORS)
+      KAREXO_AI_PROXY_MAX: ${KAREXO_AI_PROXY_MAX:-}
+      KAREXO_AI_PROXY_WINDOW_SEC: ${KAREXO_AI_PROXY_WINDOW_SEC:-}
+      # Вложения: размер, частота, какие расширения принимаем
+      KAREXO_UPLOAD_MAX_FILES: ${KAREXO_UPLOAD_MAX_FILES:-}
+      KAREXO_UPLOAD_MAX_BYTES: ${KAREXO_UPLOAD_MAX_BYTES:-}
+      KAREXO_UPLOAD_WINDOW_SEC: ${KAREXO_UPLOAD_WINDOW_SEC:-}
+      KAREXO_BLOB_ALLOW_EXT: ${KAREXO_BLOB_ALLOW_EXT:-}
+      KAREXO_BLOB_DENY_EXT: ${KAREXO_BLOB_DENY_EXT:-}
+      # Отправка страницы в канал: сколько файлов и байт уходит за раз
+      KAREXO_PUSH_MAX_FILES: ${KAREXO_PUSH_MAX_FILES:-}
+      KAREXO_PUSH_MAX_BYTES: ${KAREXO_PUSH_MAX_BYTES:-}
+      # Резервные копии: частота снятия вручную и запас места на диске
+      KAREXO_BACKUP_MAX: ${KAREXO_BACKUP_MAX:-}
+      KAREXO_BACKUP_WINDOW_SEC: ${KAREXO_BACKUP_WINDOW_SEC:-}
+      KAREXO_BACKUP_MIN_FREE_MB: ${KAREXO_BACKUP_MIN_FREE_MB:-}
+      # Журнал действий администратора: сколько записей хранить
+      KAREXO_AUDIT_KEEP: ${KAREXO_AUDIT_KEEP:-}
+      # Потолок живых напоминаний на человека
+      KAREXO_REMINDERS_MAX: ${KAREXO_REMINDERS_MAX:-}
+      # AI и квоты: доступность функции, источник квоты, учёт расхода
+      KAREXO_FEATURES_AI: ${KAREXO_FEATURES_AI:-}
+      KAREXO_AI_METERING: ${KAREXO_AI_METERING:-}
+      KAREXO_QUOTA_SOURCE: ${KAREXO_QUOTA_SOURCE:-}
+
+      # ── Лицензия ───────────────────────────────────────────────────────────
+      # Ключ платной редакции: сам ключ строкой либо путь к файлу с ним.
+      # Проверяется оффлайн - никаких обращений наружу.
+      KAREXO_LICENSE: ${KAREXO_LICENSE:-}
+      # true - без действующего ключа инстанс НЕ ЗАПУСТИТСЯ. По умолчанию мягко:
+      # расхождение видно в логе и в /api/policy, но работа не прерывается.
+      KAREXO_LICENSE_ENFORCE: ${KAREXO_LICENSE_ENFORCE:-}
+
+      # ── Закрытый контур ────────────────────────────────────────────────────
+      # false - сервер не обращается ни к одному внешнему адресу. Полный
+      # перечень того, что этим гасится, - в документе для службы безопасности.
+      KAREXO_ALLOW_OUTBOUND: ${KAREXO_ALLOW_OUTBOUND:-}
+      # Свои адреса сервисов: GitHub Enterprise Server на домене заказчика,
+      # Slack и Telegram через внутренний прокси.
+      KAREXO_GITHUB_AUTH_HOST: ${KAREXO_GITHUB_AUTH_HOST:-}
+      KAREXO_GITHUB_API_HOST: ${KAREXO_GITHUB_API_HOST:-}
+      KAREXO_SLACK_HOOK_HOST: ${KAREXO_SLACK_HOOK_HOST:-}
+      KAREXO_TELEGRAM_API_HOST: ${KAREXO_TELEGRAM_API_HOST:-}
+
     healthcheck:
+      # Ручка отвечает без входа и показывает версию - по ней же видно, что
+      # обновление доехало.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 5s
@@ -58,6 +189,3 @@ services:
 
 volumes:
   karexo-data:
-    # имя тома закреплено, чтобы команды резервного копирования
-    # из инструкции работали без изменений
-    name: karexo-data

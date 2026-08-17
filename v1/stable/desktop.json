@@ -1,0 +1,11 @@
+{
+  "version": "0.2.1",
+  "notes": "https://github.com/mihazzzold/karexo/releases/tag/v0.2.1",
+  "pub_date": "2026-08-17T05:02:33Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/mihazzzold/karexo/releases/download/v0.2.1/karexo_v0.2.1_windows_setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeFo1RndmZmhPK01wVkZoQlZTN21zTGI4Y3RzSFhlTE5KSm9tVGppK1RLNUJqWU9UMGFqUHA0RllKV21kdXNORnVQV3kzVElNaUVGblhJcGhBbEg4emM5Qmk0WnNFSUFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2OTQyODIzCWZpbGU6a2FyZXhvXzAuMi4xX3g2NC1zZXR1cC5leGUKR2RUWjFrQ0RtNmVlbTk0c0hPdXVrRkRxS3k1M0JrcmNLd3AwZVRndzNGcGthZjMxMFF1MGRwL1JrTGZCWUZueW1UU2IzbHB1YWp1NlhSK2VCY29wQmc9PQo="
+    }
+  }
+}

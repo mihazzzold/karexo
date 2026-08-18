@@ -1,8 +1,8 @@
 {
-  "version": "0.2.2",
-  "notes": "https://github.com/mihazzzold/karexo/releases/tag/v0.2.2",
-  "pub_date": "2026-08-17T14:21:33Z",
-  "url": "https://github.com/mihazzzold/karexo/releases/download/v0.2.2/karexo_v0.2.2_android.apk",
-  "sha256": "70944dcbb67263318205a62a8f63ec29960092d9ba6c3826287102cf8788c386",
+  "version": "0.2.3",
+  "notes": "https://github.com/mihazzzold/karexo/releases/tag/v0.2.3",
+  "pub_date": "2026-08-18T10:34:59Z",
+  "url": "https://github.com/mihazzzold/karexo/releases/download/v0.2.3/karexo_v0.2.3_android.apk",
+  "sha256": "2fbf0a3b5875789e9598a1bef115d513e1517780dbef776a52a56e7c231c616f",
   "minSdk": 24
 }

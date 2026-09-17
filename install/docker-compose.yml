@@ -113,6 +113,12 @@ services:
       KAREXO_GITHUB_CLIENT_SECRET: ${KAREXO_GITHUB_CLIENT_SECRET:-}
       KAREXO_GOOGLE_CLIENT_ID: ${KAREXO_GOOGLE_CLIENT_ID:-}
       KAREXO_GOOGLE_CLIENT_SECRET: ${KAREXO_GOOGLE_CLIENT_SECRET:-}
+      # Яндекс не подтверждает почту - пусто, если кнопка входа не нужна.
+      KAREXO_YANDEX_CLIENT_ID: ${KAREXO_YANDEX_CLIENT_ID:-}
+      KAREXO_YANDEX_CLIENT_SECRET: ${KAREXO_YANDEX_CLIENT_SECRET:-}
+      # Потолок начала привязки способа входа в настройках; пусто = 10 и 300.
+      KAREXO_OAUTH_LINK_MAX: ${KAREXO_OAUTH_LINK_MAX:-}
+      KAREXO_OAUTH_LINK_WINDOW_SEC: ${KAREXO_OAUTH_LINK_WINDOW_SEC:-}
 
       # ── Тонкая настройка ───────────────────────────────────────────────────
       # Всё ниже имеет разумные умолчания и обычно не трогается. Строки стоят

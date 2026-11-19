@@ -6,8 +6,21 @@
 # Запуск:
 #   1. cp .env.example .env  и заполнить (там три обязательные строки)
 #   2. docker compose up -d
-#   3. открыть адрес из KAREXO_BASE_URL - первый зарегистрированный аккаунт
-#      становится владельцем инстанса
+#   3. завести владельца инстанса - ОТДЕЛЬНОЙ командой, до первого входа:
+#        printf '%s\n' 'пароль-не-короче-8' | docker compose exec -T karexo \
+#            karexo-server -create-owner -data /data -owner-email you@example.org
+#   4. открыть адрес из KAREXO_BASE_URL и войти этой учёткой
+#
+# ПОЧЕМУ ВЛАДЕЛЕЦ ЗАВОДИТСЯ ЯВНО, а не «первым зарегистрированным». Регистрация
+# здесь по умолчанию invite (KAREXO_REGISTRATION ниже), то есть формы
+# «Зарегистрироваться» на инстансе нет вовсе, а пригласить первого человека
+# некому - на свежей базе нет ни одной учётки. Не завести владельца шагом 3 =
+# получить инстанс, в который нельзя войти.
+# Открытая регистрация (KAREXO_REGISTRATION=open) владельца назначит сама, но на
+# публичном адресе это гонка с любым, кто узнал про инстанс раньше хозяина.
+# Пароль читается со stdin, а не флагом: аргументы видны в `ps` и в
+# `docker inspect` любому, у кого есть доступ к докеру.
+# Повторный запуск на непустой базе ничего не меняет и выходит с кодом 10.
 #
 # Обновление:
 #   docker compose pull && docker compose up -d
@@ -21,13 +34,17 @@
 
 services:
   karexo:
-    # Версия задаётся точным номером, а не тегом latest, и это осознанно: пока
-    # последний выпуск предварительный (beta), latest не выдаётся вовсе - иначе
-    # бета уезжала бы всем, кто просто выполнил `docker compose pull`.
-    # Появится окончательная версия - здесь можно будет писать latest.
-    image: ghcr.io/mihazzzold/karexo:${KAREXO_TAG:-v0.2.0-beta.2}
+    # Окончательные выпуски (без дефиса в теге) получают latest в CI
+    # (.github/workflows/release.yml) - им и умолчание. Нужна конкретная
+    # версия (откат, воспроизводимость) - задайте KAREXO_TAG в .env.
+    image: ghcr.io/mihazzzold/karexo:${KAREXO_TAG:-latest}
     container_name: karexo
     restart: unless-stopped
+    # Сколько docker ждёт после SIGTERM, прежде чем убить. karexo доотдаёт
+    # открытые ответы, доводит фоновые задачи и закрывает базу - до 25 с.
+    # Умолчание docker - 10 с, и при обновлении остановка обрывалась бы
+    # посередине.
+    stop_grace_period: 30s
 
     ports:
       # Слева - порт на вашей машине. Меняется в .env через KAREXO_PORT.
@@ -45,16 +62,32 @@ services:
       # Внешний адрес инстанса. Уходит в письма и в публичные ссылки: без него
       # приглашение приведёт человека не туда.
       KAREXO_BASE_URL: ${KAREXO_BASE_URL:?укажите KAREXO_BASE_URL в .env}
+      # Коннектор claude.ai: адрес моста MCP. Пусто - коннектор выключен (404).
+      KAREXO_MCP_UPSTREAM: ${KAREXO_MCP_UPSTREAM:-}
       # Ключ шифрования токенов интеграций. Сгенерировать один раз:
       #   openssl rand -hex 32
       # Потеряете - придётся заново подключать все интеграции.
       KAREXO_TOKEN_KEY: ${KAREXO_TOKEN_KEY:?сгенерируйте KAREXO_TOKEN_KEY, см. .env.example}
+      # ⚠️ Не ваши: дверь консоли владельца продукта (наше облако). В
+      # self-hosted она не открывается вовсе - редакция не та, - и строки
+      # здесь стоят лишь затем, чтобы переменная, которую читает сервер, была
+      # видна и объяснена. Оставьте пустыми.
+      KAREXO_CONSOLE_TOKEN: ${KAREXO_CONSOLE_TOKEN:-}
+      KAREXO_CONSOLE_ACTOR: ${KAREXO_CONSOLE_ACTOR:-}
 
       # ── Редакция и доступ ──────────────────────────────────────────────────
       KAREXO_EDITION: ${KAREXO_EDITION:-self-hosted}
       # open - регистрируется кто угодно; invite - только по приглашению;
-      # closed - аккаунты заводит администратор
+      # closed - аккаунты заводит администратор.
+      # При invite и closed формы регистрации нет совсем, поэтому владельца
+      # заводят командой -create-owner - см. шаг 3 в шапке файла.
       KAREXO_REGISTRATION: ${KAREXO_REGISTRATION:-invite}
+      # personal - вошедшие друг другу посторонние, «открыть всем участникам»
+      # сервер запрещает; team - вошедшие коллеги, общий блокнот инстанса
+      # работает. Пусто = выводится из редакции (self-hosted и enterprise - team).
+      # Строка нужна здесь именно потому, что compose не передаёт неперечисленное:
+      # без неё personal-режим на поставке не включить ничем.
+      KAREXO_WORKSPACE: ${KAREXO_WORKSPACE:-}
 
       # ── Почта ──────────────────────────────────────────────────────────────
       # Без SMTP коды входа и приглашения НЕ уходят. Инстанс поднимется, но
@@ -91,11 +124,28 @@ services:
       # НЕ включайте, если сервер смотрит в интернет напрямую: заголовок тогда
       # напишет кто угодно.
       KAREXO_TRUST_PROXY: ${KAREXO_TRUST_PROXY:-}
+      # Сколько прокси перед сервером: адрес клиента берётся из X-Forwarded-For
+      # с конца под этим номером. Пусто = 1.
+      KAREXO_TRUSTED_PROXY_HOPS: ${KAREXO_TRUSTED_PROXY_HOPS:-}
+      # Дополнительные Origin для сокетов синка через запятую (интерфейс на
+      # другом имени, чем сервер). Пусто = только свой адрес и KAREXO_BASE_URL.
+      KAREXO_WS_ALLOWED_ORIGINS: ${KAREXO_WS_ALLOWED_ORIGINS:-}
 
       # ── Место ──────────────────────────────────────────────────────────────
       # Потолок на весь инстанс и месячный предел раздачи по публичным ссылкам.
       # Пусто = без ограничения.
       KAREXO_INSTANCE_LIMIT: ${KAREXO_INSTANCE_LIMIT:-}
+      # Предел размера ОДНОГО вложения; пусто = умолчание продукта (25 МиБ).
+      # Больше 25 МиБ не подействует: браузер шифрует вложение целиком в памяти.
+      KAREXO_BLOB_MAX_SIZE: ${KAREXO_BLOB_MAX_SIZE:-}
+      # Уборка вложений без ссылок старше 7 суток; пусто = включена, 0 = выключить.
+      KAREXO_BLOB_GC: ${KAREXO_BLOB_GC:-}
+      # Уборка зашифрованных вложений по заявлению клиента; пусто = включена, 0 = выключить.
+      KAREXO_BLOB_GC_E2E: ${KAREXO_BLOB_GC_E2E:-}
+      # Отдельный журнал комментариев E2E-страниц (испытательный стенд); пусто = выключен.
+      KAREXO_EXPERIMENTAL_COMMENT_JOURNAL: ${KAREXO_EXPERIMENTAL_COMMENT_JOURNAL:-}
+      # Уплотнение op-логов открытых документов (архив 30 суток); пусто = включено, 0 = выключить.
+      KAREXO_OPLOG_COMPACT: ${KAREXO_OPLOG_COMPACT:-}
       KAREXO_EGRESS_MONTHLY_BYTES: ${KAREXO_EGRESS_MONTHLY_BYTES:-}
 
       # ── Резервные копии по расписанию ──────────────────────────────────────
@@ -109,40 +159,153 @@ services:
       # Пусто = раздел «Интеграции» показывает провайдеров выключенными.
       # Ключи заводятся в самом провайдере на ваш домен.
       KAREXO_FEATURES_INTEGRATIONS: ${KAREXO_FEATURES_INTEGRATIONS:-}
+      KAREXO_GITLAB_ALLOW_PRIVATE: ${KAREXO_GITLAB_ALLOW_PRIVATE:-}
+      KAREXO_GITLAB_OAUTH_CLIENT_ID: ${KAREXO_GITLAB_OAUTH_CLIENT_ID:-}
+      KAREXO_GITLAB_OAUTH_CLIENT_SECRET: ${KAREXO_GITLAB_OAUTH_CLIENT_SECRET:-}
+      # Сквозное шифрование: пусто = умолчание редакции (в saas его нет).
+      KAREXO_FEATURES_E2E: ${KAREXO_FEATURES_E2E:-}
       KAREXO_GITHUB_CLIENT_ID: ${KAREXO_GITHUB_CLIENT_ID:-}
       KAREXO_GITHUB_CLIENT_SECRET: ${KAREXO_GITHUB_CLIENT_SECRET:-}
       KAREXO_GOOGLE_CLIENT_ID: ${KAREXO_GOOGLE_CLIENT_ID:-}
       KAREXO_GOOGLE_CLIENT_SECRET: ${KAREXO_GOOGLE_CLIENT_SECRET:-}
-      # Яндекс не подтверждает почту - пусто, если кнопка входа не нужна.
+      # Яндекс - только вход. Пусто = кнопки «Продолжить через Яндекс» нет.
       KAREXO_YANDEX_CLIENT_ID: ${KAREXO_YANDEX_CLIENT_ID:-}
       KAREXO_YANDEX_CLIENT_SECRET: ${KAREXO_YANDEX_CLIENT_SECRET:-}
-      # Потолок начала привязки способа входа в настройках; пусто = 10 и 300.
-      KAREXO_OAUTH_LINK_MAX: ${KAREXO_OAUTH_LINK_MAX:-}
-      KAREXO_OAUTH_LINK_WINDOW_SEC: ${KAREXO_OAUTH_LINK_WINDOW_SEC:-}
 
       # ── Тонкая настройка ───────────────────────────────────────────────────
       # Всё ниже имеет разумные умолчания и обычно не трогается. Строки стоят
       # здесь, чтобы настройку МОЖНО было задать через .env: compose передаёт в
       # контейнер только перечисленное, и без строки значение просто не доедет.
       #
+      # Логирование (E4): пусто - только stdout, как раньше; путь в
+      # KAREXO_LOG_FILE - пишем туда же ещё и построчным JSON (для будущей
+      # консоли). Уровень - debug/info/warn/error, пусто = info.
+      KAREXO_LOG_FILE: ${KAREXO_LOG_FILE:-}
+      KAREXO_LOG_LEVEL: ${KAREXO_LOG_LEVEL:-}
+      #
       # Потолки частоты (защита от перебора и от скриптов):
       KAREXO_LOGIN_MAX_ATTEMPTS: ${KAREXO_LOGIN_MAX_ATTEMPTS:-}
       KAREXO_LOGIN_WINDOW_SEC: ${KAREXO_LOGIN_WINDOW_SEC:-}
       KAREXO_SIGNUP_MAX: ${KAREXO_SIGNUP_MAX:-}
       KAREXO_SIGNUP_WINDOW_SEC: ${KAREXO_SIGNUP_WINDOW_SEC:-}
+      # Вход через провайдера: ручки открыты без сессии, и каждое начало входа
+      # кладёт метку в память сервера на десять минут.
+      KAREXO_OAUTH_SIGNIN_MAX: ${KAREXO_OAUTH_SIGNIN_MAX:-}
+      KAREXO_OAUTH_SIGNIN_WINDOW_SEC: ${KAREXO_OAUTH_SIGNIN_WINDOW_SEC:-}
+      # Обращения: столько заявок на аккаунт за столько секунд.
+      KAREXO_FEEDBACK_MAX: ${KAREXO_FEEDBACK_MAX:-}
+      KAREXO_FEEDBACK_WINDOW_SEC: ${KAREXO_FEEDBACK_WINDOW_SEC:-}
+      # Реплики в уже заведённой теме обращения - свой счётчик, щедрее.
+      KAREXO_FEEDBACK_REPLY_MAX: ${KAREXO_FEEDBACK_REPLY_MAX:-}
+      KAREXO_FEEDBACK_REPLY_WINDOW_SEC: ${KAREXO_FEEDBACK_REPLY_WINDOW_SEC:-}
+      # Форма обратной связи без входа: выключатель и потолки (по адресу в
+      # час и в сутки, на весь инстанс в сутки, сколько строк хранить).
+      KAREXO_PUBLIC_FEEDBACK: ${KAREXO_PUBLIC_FEEDBACK:-}
+      # Курсоры коллег в общем документе: пусто - из редакции (облако - да,
+      # остальные - нет), on/off перебивает в обе стороны.
+      KAREXO_PRESENCE_CURSORS: ${KAREXO_PRESENCE_CURSORS:-}
+      # Умолчание тумблера «Предпросмотр ссылок»: пусто - из редакции (облако -
+      # да, остальные - нет), on/off перебивает; без исходящих выключено всегда.
+      KAREXO_LINK_PREVIEW_DEFAULT: ${KAREXO_LINK_PREVIEW_DEFAULT:-}
+      # Запись во внешние календари: пусто - из редакции (облако - нет, P6-02;
+      # остальные - да), on/off перебивает в обе стороны. Чтение не задевает.
+      KAREXO_FEATURES_CALENDAR_WRITE: ${KAREXO_FEATURES_CALENDAR_WRITE:-}
+      # Заморозка X-47: Командный ИИ, автоматизации баз, Mattermost и вебхук.
+      # Пусто - из редакции (облако - нет, остальные - да), on/off перебивает.
+      KAREXO_FEATURES_TEAM_AI: ${KAREXO_FEATURES_TEAM_AI:-}
+      KAREXO_FEATURES_DB_AUTOMATIONS: ${KAREXO_FEATURES_DB_AUTOMATIONS:-}
+      KAREXO_FEATURES_MATTERMOST_WEBHOOK: ${KAREXO_FEATURES_MATTERMOST_WEBHOOK:-}
+      # Push-уведомления и расшифровка голоса: пусто - выключено (каркас без
+      # ключей провайдеров); в enterprise выключено всегда.
+      KAREXO_FEATURES_PUSH: ${KAREXO_FEATURES_PUSH:-}
+      KAREXO_FEATURES_VOICE: ${KAREXO_FEATURES_VOICE:-}
+      # Аналитика: приложение Android - AppMetrica (docs/egress.md C7, C8), веб-вкладка -
+      # Яндекс Метрика в изолированной рамке со счётчиком KAREXO_METRIKA_COUNTER_ID (S19c).
+      # Пусто - выключено, только с согласием человека; в enterprise выключено всегда.
+      KAREXO_FEATURES_APP_TELEMETRY: ${KAREXO_FEATURES_APP_TELEMETRY:-}
+      KAREXO_GOOGLE_CALENDAR: ${KAREXO_GOOGLE_CALENDAR:-}
+      # Шлюз push заказчика (UnifiedPush/ntfy) - единственный путь push в enterprise;
+      # ключ и каталог Yandex SpeechKit для голоса. Значения не логируются.
+      KAREXO_PUSH_GATEWAY_URL: ${KAREXO_PUSH_GATEWAY_URL:-}
+      KAREXO_FCM_CREDENTIALS_FILE: ${KAREXO_FCM_CREDENTIALS_FILE:-}
+      KAREXO_FCM_CREDENTIALS_JSON: ${KAREXO_FCM_CREDENTIALS_JSON:-}
+      # SHA-256 отпечаток сертификата подписи APK: включает Android App Links
+      # (/.well-known/assetlinks.json, возврат входа в приложение https-ссылкой).
+      # Пусто - файл 404, возврат схемой karexo://. Не секрет.
+      KAREXO_ANDROID_CERT_SHA256: ${KAREXO_ANDROID_CERT_SHA256:-}
+      KAREXO_VAPID_PUBLIC_KEY: ${KAREXO_VAPID_PUBLIC_KEY:-}
+      KAREXO_VAPID_PRIVATE_KEY: ${KAREXO_VAPID_PRIVATE_KEY:-}
+      KAREXO_VAPID_SUBJECT: ${KAREXO_VAPID_SUBJECT:-}
+      KAREXO_METRIKA_COUNTER_ID: ${KAREXO_METRIKA_COUNTER_ID:-}
+      KAREXO_SPEECH_API_KEY: ${KAREXO_SPEECH_API_KEY:-}
+      KAREXO_SPEECH_FOLDER_ID: ${KAREXO_SPEECH_FOLDER_ID:-}
+      KAREXO_PUBLIC_FEEDBACK_HOUR_MAX: ${KAREXO_PUBLIC_FEEDBACK_HOUR_MAX:-}
+      KAREXO_PUBLIC_FEEDBACK_DAY_MAX: ${KAREXO_PUBLIC_FEEDBACK_DAY_MAX:-}
+      KAREXO_PUBLIC_FEEDBACK_INSTANCE_DAY_MAX: ${KAREXO_PUBLIC_FEEDBACK_INSTANCE_DAY_MAX:-}
+      KAREXO_PUBLIC_FEEDBACK_KEEP: ${KAREXO_PUBLIC_FEEDBACK_KEEP:-}
+      # Привязка способа входа в настройках - потолок свой, тесный: она
+      # спрашивает пароль, то есть это действие класса второго фактора.
+      KAREXO_OAUTH_LINK_MAX: ${KAREXO_OAUTH_LINK_MAX:-}
+      KAREXO_OAUTH_LINK_WINDOW_SEC: ${KAREXO_OAUTH_LINK_WINDOW_SEC:-}
       KAREXO_TOTP_MAX_ATTEMPTS: ${KAREXO_TOTP_MAX_ATTEMPTS:-}
       KAREXO_TOTP_WINDOW_SEC: ${KAREXO_TOTP_WINDOW_SEC:-}
       KAREXO_GUEST_NOTIFY_MAX: ${KAREXO_GUEST_NOTIFY_MAX:-}
       KAREXO_GUEST_NOTIFY_WINDOW_SEC: ${KAREXO_GUEST_NOTIFY_WINDOW_SEC:-}
+      KAREXO_SYNC_SOCKETS_PER_USER_MAX: ${KAREXO_SYNC_SOCKETS_PER_USER_MAX:-}
+      KAREXO_SYNC_SOCKETS_PER_ADDR_MAX: ${KAREXO_SYNC_SOCKETS_PER_ADDR_MAX:-}
       KAREXO_SCOPE_MAX: ${KAREXO_SCOPE_MAX:-}
       KAREXO_SCOPE_WINDOW_SEC: ${KAREXO_SCOPE_WINDOW_SEC:-}
       KAREXO_INTEGRATION_VERIFY_MAX: ${KAREXO_INTEGRATION_VERIFY_MAX:-}
       KAREXO_INTEGRATION_VERIFY_WINDOW_SEC: ${KAREXO_INTEGRATION_VERIFY_WINDOW_SEC:-}
       KAREXO_CALENDAR_READ_MAX: ${KAREXO_CALENDAR_READ_MAX:-}
       KAREXO_CALENDAR_READ_WINDOW_SEC: ${KAREXO_CALENDAR_READ_WINDOW_SEC:-}
+      KAREXO_GITHUB_PUSH_MAX: ${KAREXO_GITHUB_PUSH_MAX:-}
+      KAREXO_GITHUB_PUSH_WINDOW_SEC: ${KAREXO_GITHUB_PUSH_WINDOW_SEC:-}
+      # Запись в календарь: потолок СВОЙ, отдельный от чтения, а у удаления -
+      # ещё и жёстче. Чтение, отбитое лимитом, повторится безвредно; правка
+      # оставит строку базы расходящейся с календарём, а удаление не отменяется.
+      KAREXO_CALENDAR_WRITE_MAX: ${KAREXO_CALENDAR_WRITE_MAX:-}
+      KAREXO_CALENDAR_WRITE_WINDOW_SEC: ${KAREXO_CALENDAR_WRITE_WINDOW_SEC:-}
+      KAREXO_CALENDAR_DELETE_MAX: ${KAREXO_CALENDAR_DELETE_MAX:-}
+      KAREXO_CALENDAR_DELETE_WINDOW_SEC: ${KAREXO_CALENDAR_DELETE_WINDOW_SEC:-}
+      # Сломанное подключение перестают дёргать: N отказов подряд - и пауза.
+      KAREXO_CALENDAR_WRITE_FAILS: ${KAREXO_CALENDAR_WRITE_FAILS:-}
+      KAREXO_CALENDAR_WRITE_PAUSE_SEC: ${KAREXO_CALENDAR_WRITE_PAUSE_SEC:-}
+      # Вебхук Google Calendar push - потолок по адресу: Google делит IP на
+      # всех клиентов сервиса, это щит от шторма, а не от конкретного адреса.
+      KAREXO_GOOGLE_WEBHOOK_MAX: ${KAREXO_GOOGLE_WEBHOOK_MAX:-}
+      KAREXO_GOOGLE_WEBHOOK_WINDOW_SEC: ${KAREXO_GOOGLE_WEBHOOK_WINDOW_SEC:-}
       # AI-прокси: сервер пересылает запрос к модели (провайдеры без CORS)
+      KAREXO_YOOKASSA_SHOP_ID: ${KAREXO_YOOKASSA_SHOP_ID:-}
+      KAREXO_YOOKASSA_SECRET: ${KAREXO_YOOKASSA_SECRET:-}
+      KAREXO_YOOKASSA_VAT_CODE: ${KAREXO_YOOKASSA_VAT_CODE:-}
+      KAREXO_GITLAB_CALL_MAX: ${KAREXO_GITLAB_CALL_MAX:-}
+      KAREXO_GITLAB_CALL_WINDOW_SEC: ${KAREXO_GITLAB_CALL_WINDOW_SEC:-}
+      KAREXO_LINK_META_MAX: ${KAREXO_LINK_META_MAX:-}
+      KAREXO_LINK_META_WINDOW_SEC: ${KAREXO_LINK_META_WINDOW_SEC:-}
+      # Разбор публичной ссылки: единственная дверь чтения без входа. Ключ -
+      # адрес обращения, поэтому запас рассчитан на офис за одним NAT.
+      KAREXO_LINK_RESOLVE_MAX: ${KAREXO_LINK_RESOLVE_MAX:-}
+      KAREXO_LINK_RESOLVE_WINDOW_SEC: ${KAREXO_LINK_RESOLVE_WINDOW_SEC:-}
+      # Потолок частоты биллинга: оплата (на аккаунт) и уведомления
+      # провайдера (на адрес) - каждый запрос стоит похода к ЮKassa.
+      KAREXO_BILLING_MAX: ${KAREXO_BILLING_MAX:-}
+      KAREXO_BILLING_SYNC_MAX: ${KAREXO_BILLING_SYNC_MAX:-}
+      KAREXO_BILLING_WINDOW_SEC: ${KAREXO_BILLING_WINDOW_SEC:-}
+      # Проверка лицензии: единственный способ отозвать ключ. Только
+      # self-hosted; в enterprise выключено навсегда.
+      KAREXO_LICENSE_CHECK: ${KAREXO_LICENSE_CHECK:-}
+      KAREXO_UPDATES_CHECK: ${KAREXO_UPDATES_CHECK:-}
+      KAREXO_LICENSE_CHECK_URL: ${KAREXO_LICENSE_CHECK_URL:-}
       KAREXO_AI_PROXY_MAX: ${KAREXO_AI_PROXY_MAX:-}
       KAREXO_AI_PROXY_WINDOW_SEC: ${KAREXO_AI_PROXY_WINDOW_SEC:-}
+      # Тот же прокси, но потолок на КОШЕЛЁК: участники команды тратят кредиты
+      # владельца, и десять человек по личному потолку дают десятикратную
+      # частоту против одного счёта.
+      KAREXO_AI_TEAM_MAX: ${KAREXO_AI_TEAM_MAX:-}
+      KAREXO_AI_TEAM_WINDOW_SEC: ${KAREXO_AI_TEAM_WINDOW_SEC:-}
+      # Рубильник пробы ИИ (P6-18): сколько проб в сутки UTC; пусто - 30; 0 - проба выключена.
+      KAREXO_AI_TRIAL_DAILY_MAX: ${KAREXO_AI_TRIAL_DAILY_MAX:-}
       # Вложения: размер, частота, какие расширения принимаем
       KAREXO_UPLOAD_MAX_FILES: ${KAREXO_UPLOAD_MAX_FILES:-}
       KAREXO_UPLOAD_MAX_BYTES: ${KAREXO_UPLOAD_MAX_BYTES:-}
@@ -164,6 +327,49 @@ services:
       KAREXO_FEATURES_AI: ${KAREXO_FEATURES_AI:-}
       KAREXO_AI_METERING: ${KAREXO_AI_METERING:-}
       KAREXO_QUOTA_SOURCE: ${KAREXO_QUOTA_SOURCE:-}
+      # Просрочка тарифа: none | notify | freeze. Пусто = умолчание редакции
+      # (saas - freeze, остальные с тарифами - notify). Вне billing выключено
+      # всегда и не включается ничем.
+      KAREXO_OVERDUE: ${KAREXO_OVERDUE:-}
+      # Сколько дней выставленный и не отмеченный оплаченным счёт держит
+      # покупателю правку и тарифное место. Пусто = 14 дней; 0 СНИМАЕТ срок -
+      # поблажка становится бессрочной, как было до 07.09.2026.
+      KAREXO_OVERDUE_INVOICE_HOLD_DAYS: ${KAREXO_OVERDUE_INVOICE_HOLD_DAYS:-}
+      # Продажа токенов karexo: право инстанса, а не свойство редакции.
+      # Пусто = умолчание редакции (в saas продаём, в остальных нет).
+      KAREXO_AI_TOKEN_SALES: ${KAREXO_AI_TOKEN_SALES:-}
+      # Продажа ПАКЕТОВ кредитов («Пополнить»): свой выключатель, выключен во
+      # всех редакциях (P1-23). Кредиты тарифа не трогает.
+      KAREXO_CREDIT_PACK_SALES: ${KAREXO_CREDIT_PACK_SALES:-}
+      # Вправе ли человек ходить в модель СВОИМ ключом. Пусто = умолчание
+      # редакции: в saas нельзя (AI только наш), в остальных можно.
+      # false без ключа инстанса ниже = AI не работает вовсе: ходить нечем.
+      KAREXO_AI_OWN_KEY: ${KAREXO_AI_OWN_KEY:-}
+      # Список моделей ИИ, который задаёт сервер: ключ=идентификатор;ключ=... Первая
+      # запись - по умолчанию. Клиент видит только ключи, folder id остаётся тут.
+      # Пусто = как раньше (человек видит каталог провайдера).
+      KAREXO_AI_MODELS: ${KAREXO_AI_MODELS:-}
+      # Ключ инстанса: им прокси ходит в модель ЗА НАШ СЧЁТ. Обязателен там, где
+      # свой ключ пользователя запрещён; где разрешён - запасной, для тех, кто
+      # своего не вписал. Секрет: в журнал и клиенту не уезжает никогда.
+      KAREXO_AI_BASE_URL: ${KAREXO_AI_BASE_URL:-}
+      KAREXO_AI_API_KEY: ${KAREXO_AI_API_KEY:-}
+      # Как класть ключ в заголовок: пусто | bearer | api-key (YandexGPT).
+      KAREXO_AI_AUTH: ${KAREXO_AI_AUTH:-}
+      # Месячный предел расхода КЛЮЧОМ ИНСТАНСА на человека: токены и запросы
+      # за календарный месяц UTC. Бережёт ключ организации: им ходит всякий, кто
+      # своего не вписал. 0 СНИМАЕТ предел (как KAREXO_EGRESS_MONTHLY_BYTES).
+      # Считаем всегда, отказываем только по заданному числу.
+      KAREXO_AI_INSTANCE_TOKENS_MONTHLY: ${KAREXO_AI_INSTANCE_TOKENS_MONTHLY:-}
+      KAREXO_AI_INSTANCE_REQUESTS_MONTHLY: ${KAREXO_AI_INSTANCE_REQUESTS_MONTHLY:-}
+      # Потолок на ВЕСЬ сервер: счёт от провайдера приходит один, а пара выше
+      # считает на человека и умножается на количество людей.
+      KAREXO_AI_INSTANCE_TOKENS_MONTHLY_TOTAL: ${KAREXO_AI_INSTANCE_TOKENS_MONTHLY_TOTAL:-}
+      KAREXO_AI_INSTANCE_REQUESTS_MONTHLY_TOTAL: ${KAREXO_AI_INSTANCE_REQUESTS_MONTHLY_TOTAL:-}
+      # Сколько секунд ждём весь потоковый ответ модели. Пусто = 300 (пять
+      # минут): меньше - и длинный ответ рвётся вместе с финальным чанком, где
+      # приезжают счётчики токенов. Ноль и мусор = умолчание, выключить нельзя.
+      KAREXO_AI_STREAM_TIMEOUT_SEC: ${KAREXO_AI_STREAM_TIMEOUT_SEC:-}
 
       # ── Проверка обновлений ────────────────────────────────────────────────
       # Инстанс раз в сутки спрашивает у GitHub, вышла ли версия, и говорит об
@@ -195,6 +401,10 @@ services:
       KAREXO_GITHUB_API_HOST: ${KAREXO_GITHUB_API_HOST:-}
       KAREXO_SLACK_HOOK_HOST: ${KAREXO_SLACK_HOOK_HOST:-}
       KAREXO_TELEGRAM_API_HOST: ${KAREXO_TELEGRAM_API_HOST:-}
+      # Исходящий прокси ТОЛЬКО для запросов к ИИ и уведомлений в Telegram
+      # (например http://xray:10809). Пусто = напрямую. Прокси лёг - запрос
+      # падает, на прямое соединение не откатываемся.
+      KAREXO_OUTBOUND_PROXY: ${KAREXO_OUTBOUND_PROXY:-}
 
     healthcheck:
       # Ручка отвечает без входа и показывает версию - по ней же видно, что

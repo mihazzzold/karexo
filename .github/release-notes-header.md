@@ -12,44 +12,56 @@ raw-ссылке на main этого репозитория.
 -->
 ## 🚀 Как поднять сервер
 
-**Docker** - скачайте ниже `docker-compose.yml` и `env.example`, положите рядом, переименуйте второй в `.env` и впишите свои значения:
+Одна команда:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/mihazzzold/karexo/main/install/install.sh
+sh install.sh
+```
+
+Скрипт спросит адрес, порт, почту и **учётку владельца**, сам сгенерирует ключ шифрования,
+запишет `.env` с правами 600 и поднимет стек. Дальше - открыть адрес и войти.
+
+Руками, если скрипт не подходит: скачайте ниже `docker-compose.yml` и `env.example`, положите
+рядом, переименуйте второй в `.env` и впишите свои значения:
 
 ```bash
 openssl rand -hex 32     # результат - в KAREXO_TOKEN_KEY
 docker compose up -d
 ```
 
-**Без Docker** - скачайте архив под свою систему:
+⚠️ **Владельца заводят отдельной командой.** Формы «Зарегистрироваться» на инстансе нет:
+регистрация по умолчанию только по приглашениям, а приглашать на свежей базе некого. Без шага
+ниже в инстанс нечем войти:
 
-| Файл | Для чего |
-|---|---|
-| `karexo_{{TAG}}_linux_amd64.tar.gz` | Linux x86-64: бинарь, `install.sh`, юнит systemd |
-| `karexo_{{TAG}}_linux_arm64.tar.gz` | Linux ARM (Raspberry Pi, ARM-серверы) |
-| `karexo_{{TAG}}_windows_amd64.tar.gz` | Windows: бинарь и `install.ps1` (ставит службу) |
-| `karexo_{{TAG}}_darwin_arm64.tar.gz` | macOS на Apple Silicon |
-| `karexo_{{TAG}}_docker.tar.gz` | контур **без интернета**: сохранённый образ и инструкция |
+```bash
+printf '%s\n' 'пароль-не-короче-8' | docker compose exec -T karexo \
+    karexo-server -create-owner -data /data -owner-email you@example.org
+```
 
-Подробно - [install/README.md](https://github.com/mihazzzold/karexo/blob/main/install/README.md), для закрытого контура - [install/OFFLINE.md](https://github.com/mihazzzold/karexo/blob/main/install/OFFLINE.md).
+Пароль идёт в stdin, а не флагом: аргументы видны в `ps` и в `docker inspect` любому, у кого есть
+доступ к докеру. Повторный запуск на непустой базе ничего не меняет.
+
+**Что лежит в этом выпуске:** `docker-compose.yml`, `env.example` и `install.sh`. Сборок клиентских
+приложений (APK, установщик Windows) здесь нет - они собираются отдельно и появляются в выпуске,
+когда их собрали.
+
+Подробно - [install/README.md](https://github.com/mihazzzold/karexo/blob/main/install/README.md),
+для закрытого контура - [install/OFFLINE.md](https://github.com/mihazzzold/karexo/blob/main/install/OFFLINE.md),
+свой домен, HTTPS, резервные копии и обновление - [docs/установка.md](https://github.com/mihazzzold/karexo/blob/main/docs/установка.md).
 
 ## 📱 Поставить karexo как приложение
 
-**Готовым приложением:**
+Отдельная установка не нужна: karexo ставится прямо из браузера и дальше работает своей иконкой,
+в своём окне, без адресной строки.
 
-| Файл | Система |
+| Устройство | Как поставить |
 |---|---|
-| `karexo_{{TAG}}_android.apk` | Android - откройте файл на телефоне и разрешите установку из этого источника |
-| `karexo_{{TAG}}_windows_setup.exe` | Windows - установщик; при первом запуске SmartScreen предупредит, что сборка без подписи |
+| **Android** | Chrome → меню (⋮) → «Установить приложение» |
+| **Windows, Linux, macOS** | Chrome или Edge → значок установки в адресной строке |
+| **iPhone, iPad** | Safari → «Поделиться» → «На экран "Домой"» |
 
-Оба спрашивают адрес вашего инстанса при первом запуске. Внутри - тот же karexo с вашего сервера,
-поэтому обновляется он вместе с инстансом, а не через магазин.
-
-**Или прямо из браузера**, без отдельной установки - приложение работает своей иконкой, в своём
-окне, без адресной строки:
-
-- **Android**: Chrome → меню (⋮) → «Установить приложение»
-- **Windows, Linux, macOS**: Chrome или Edge → значок установки в адресной строке
-- **iPhone, iPad**: Safari → «Поделиться» → «На экран "Домой"»
-
-Оболочка открывается и **без сети**: заметки лежат на устройстве, синхронизация догонит, когда связь вернётся.
+Оболочка открывается и **без сети**: заметки лежат на устройстве, синхронизация догонит, когда
+связь вернётся.
 
 ---

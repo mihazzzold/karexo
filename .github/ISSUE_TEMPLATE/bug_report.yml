@@ -24,7 +24,7 @@ body:
     attributes:
       label: Версия karexo
       description: "Настройки → О программе. Либо ответ сервера на `/healthz` - там есть поле version."
-      placeholder: "например, v0.1.0"
+      placeholder: "например, v0.1.1"
     validations:
       required: true
 
@@ -94,3 +94,4 @@ body:
       description: Повторяется ли ошибка каждый раз, было ли раньше, что-то ещё важное.
     validations:
       required: false
+

@@ -42,9 +42,10 @@ printf '%s\n' 'пароль-не-короче-8' | docker compose exec -T karexo
 Пароль идёт в stdin, а не флагом: аргументы видны в `ps` и в `docker inspect` любому, у кого есть
 доступ к докеру. Повторный запуск на непустой базе ничего не меняет.
 
-**Что лежит в этом выпуске:** `docker-compose.yml`, `env.example` и `install.sh`. Сборок клиентских
-приложений (APK, установщик Windows) здесь нет - они собираются отдельно и появляются в выпуске,
-когда их собрали.
+**Что лежит в этом выпуске:** `docker-compose.yml`, `env.example`, `install.sh` и архив
+`karexo_{{TAG}}_docker.tar.gz` для контура без интернета - в нём тот же образ плюс эти файлы.
+Сборок клиентских приложений (APK, установщик Windows) здесь нет: приложение для Android выходит
+отдельной сборкой со своим номером и своей страницей выпуска.
 
 Подробно - [install/README.md](https://github.com/mihazzzold/karexo/blob/main/install/README.md),
 для закрытого контура - [install/OFFLINE.md](https://github.com/mihazzzold/karexo/blob/main/install/OFFLINE.md),
